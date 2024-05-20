@@ -5,7 +5,9 @@ go 1.22.1
 require (
 	github.com/BurntSushi/toml v1.3.2
 	github.com/fxamacker/cbor/v2 v2.6.0
+	github.com/gabriel-vasile/mimetype v1.4.3
 	github.com/go-chi/chi/v5 v5.0.12
+	lukechampine.com/blake3 v1.2.1
 )
 
 require (
@@ -44,9 +46,9 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.18.0 // indirect
+	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
-	lukechampine.com/blake3 v1.2.1 // indirect
 )
 
 require (

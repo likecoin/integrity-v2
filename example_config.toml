@@ -15,6 +15,9 @@ c2pa_manifests = "/path/to/c2pa-manifests/storage/"
 metadata_enc_keys = "/path/to/metadata-encryption-key/storage/"
 file_enc_keys = "/path/to/file-encryption-key/storage/"
 
+[folder_preprocessor]
+sync_folder_root = "/path/to/sync/folder/"
+file_extensions = ['.jpg', '.png', '.jpeg']
 
 [bins]
 ipfs = "/usr/local/bin/ipfs"
