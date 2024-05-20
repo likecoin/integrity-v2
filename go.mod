@@ -52,6 +52,7 @@ require (
 )
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/ipfs/boxo v0.19.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-datastore v0.6.0
