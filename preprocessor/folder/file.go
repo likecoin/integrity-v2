@@ -12,8 +12,16 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/starlinglab/integrity-v2/config"
 	"lukechampine.com/blake3"
+)
+
+var (
+	FileStatusFound     = "Found"
+	FileStatusUploading = "Uploading"
+	FileStatusSuccess   = "Success"
+	FileStatusError     = "Error"
 )
 
 func getFileMetadata(filePath string) (map[string]any, error) {
@@ -52,14 +60,62 @@ func getFileMetadata(filePath string) (map[string]any, error) {
 	}, nil
 }
 
-func handleNewFile(filePath string) (string, error) {
+func handleNewFile(pgPool *pgxpool.Pool, filePath string) (string, error) {
+	result, err := queryIfFileExists(pgPool, filePath)
+	if err != nil {
+		return "", fmt.Errorf("error checking if file exists in database: %v", err)
+	}
+	status, errorMessage, cid := "", "", ""
+	if result != nil {
+		if result.Status != nil {
+			status = *result.Status
+		}
+		if result.ErrorMessage != nil {
+			errorMessage = *result.ErrorMessage
+		}
+		if result.Cid != nil {
+			cid = *result.Cid
+		}
+	}
+	switch status {
+	case FileStatusFound:
+		return "", fmt.Errorf("file %s is already found", filePath)
+	case FileStatusUploading:
+		return "", fmt.Errorf("file %s is already uploading", filePath)
+	case FileStatusSuccess:
+		return cid, nil
+	case FileStatusError:
+		return "", fmt.Errorf("file %s has error: %s", filePath, errorMessage)
+	default:
+		// noop
+	}
+	err = setFileStatusFound(pgPool, filePath)
+	if err != nil {
+		return "", fmt.Errorf("error setting file status to found: %v", err)
+	}
 	metadata, err := getFileMetadata(filePath)
 	if err != nil {
+		e := setFileStatusError(pgPool, filePath, err.Error())
+		if e != nil {
+			fmt.Println("error setting file status to error:", e)
+		}
 		return "", fmt.Errorf("error getting metadata for file %s: %v", filePath, err)
 	}
-	cid, err := postFileMetadataToWebHook(filePath, metadata)
+	err = setFileStatusUploading(pgPool, filePath, metadata["sha256"].(string))
 	if err != nil {
+		return "", fmt.Errorf("error setting file status to uploading: %v", err)
+	}
+	cid, err = postFileMetadataToWebHook(filePath, metadata)
+	if err != nil {
+		e := setFileStatusError(pgPool, filePath, err.Error())
+		if e != nil {
+			fmt.Println("error setting file status to error:", e)
+		}
 		return "", fmt.Errorf("error posting metadata for file %s: %v", filePath, err)
+	}
+	err = setFileStatusDone(pgPool, filePath, cid)
+	if err != nil {
+		return "", fmt.Errorf("error setting file status to done: %v", err)
 	}
 	return cid, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/starlinglab/integrity-v2/config"
+	"github.com/starlinglab/integrity-v2/database"
 	"github.com/starlinglab/integrity-v2/util"
 )
 
@@ -33,13 +34,23 @@ func scanSyncDirectory(subPath string) ([]string, error) {
 }
 
 func Run(args []string) {
+	pgPool, err := database.GetDatabaseConnectionPool()
+	if err != nil {
+		util.Die("error getting database connection pool: %v", err)
+	}
+	defer database.CloseDatabaseConnectionPool()
+	err = initDbTableIfNotExists(pgPool)
+	if err != nil {
+		util.Die("error initializing database table: %v", err)
+	}
+
 	// Scan whole sync directory
 	fileList, err := scanSyncDirectory("")
 	if err != nil {
 		util.Die("error scanning directory: %v", err)
 	}
 	for _, filePath := range fileList {
-		cid, err := handleNewFile(filePath)
+		cid, err := handleNewFile(pgPool, filePath)
 		if err != nil {
 			fmt.Println(err)
 		} else {
@@ -75,7 +86,7 @@ func Run(args []string) {
 						continue
 					}
 					if checkShouldIncludeFile(fileInfo) {
-						cid, err := handleNewFile(filePath)
+						cid, err := handleNewFile(pgPool, filePath)
 						if err != nil {
 							fmt.Println(err)
 						} else {
