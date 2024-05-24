@@ -5,21 +5,35 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rjeczalik/notify"
 	"github.com/starlinglab/integrity-v2/config"
 	"github.com/starlinglab/integrity-v2/database"
 )
 
+func findProjectWithFilePath(filePath string, projects []ProjectQueryResult) *ProjectQueryResult {
+	syncRoot := config.GetConfig().FolderPreprocessor.SyncFolderRoot
+	syncRoot = filepath.Clean(syncRoot)
+	for _, project := range projects {
+		projectPath := *project.ProjectPath
+		projectPath = filepath.Join(syncRoot, projectPath)
+		if strings.HasPrefix(filePath, projectPath) {
+			return &project
+		}
+	}
+	return nil
+}
+
 // scanSyncDirectory scans a path under the sync directory and returns a list of files
-func scanSyncDirectory(subPath string) ([]string, error) {
+func scanSyncDirectory(subPath string) (fileList []string, err error) {
 	scanRoot := config.GetConfig().FolderPreprocessor.SyncFolderRoot
 	if scanRoot == "" {
 		return nil, fmt.Errorf("sync folder root not set")
 	}
 	scanPath := filepath.Join(scanRoot, subPath)
-	fileList := []string{}
-	err := filepath.WalkDir(scanPath, func(path string, info os.DirEntry, err error) error {
+	log.Println("Scanning: " + scanPath)
+	err = filepath.WalkDir(scanPath, func(path string, info os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -45,17 +59,24 @@ func Run(args []string) error {
 		return err
 	}
 
-	// Scan whole sync directory
-	fileList, err := scanSyncDirectory("")
+	projects, err := queryAllProjects(pgPool)
 	if err != nil {
 		return err
 	}
-	for _, filePath := range fileList {
-		cid, err := handleNewFile(pgPool, filePath)
+
+	for _, project := range projects {
+		projectPath := *project.ProjectPath
+		fileList, err := scanSyncDirectory(projectPath)
 		if err != nil {
 			log.Println(err)
-		} else {
-			log.Printf("file %s uploaded to webhook with CID %s\n", filePath, cid)
+		}
+		for _, filePath := range fileList {
+			cid, err := handleNewFile(pgPool, filePath, &project)
+			if err != nil {
+				log.Println(err)
+			} else {
+				log.Printf("File %s uploaded to webhook with CID %s\n", filePath, cid)
+			}
 		}
 	}
 
@@ -85,7 +106,8 @@ func Run(args []string) error {
 					return
 				}
 				if shouldIncludeFile(fileInfo.Name()) {
-					cid, err := handleNewFile(pgPool, filePath)
+					project := findProjectWithFilePath(filePath, projects)
+					cid, err := handleNewFile(pgPool, filePath, project)
 					if err != nil {
 						log.Println(err)
 					} else {
